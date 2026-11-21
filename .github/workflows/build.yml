@@ -37,7 +37,7 @@ jobs:
       - name: Decode signing key
         if: env.KEYSTORE_BASE64 != ''
         run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/lull-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/lull-release.jks"
           echo "KEYSTORE_FILE=$RUNNER_TEMP/lull-release.jks" >> "$GITHUB_ENV"
 
       - name: Build APK
