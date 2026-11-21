@@ -1,6 +1,7 @@
 package com.geomatter.lull;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Color;
@@ -14,6 +15,11 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -25,6 +31,12 @@ public class MainActivity extends Activity {
 
     private static final String START_URL = "https://app.slack.com/client";
     private static final int FILE_CHOOSER_REQUEST = 1001;
+
+    // The release workflow publishes version.txt (the build number) next to each APK.
+    private static final String LATEST_VERSION_URL =
+            "https://github.com/GeoMatter/Lull/releases/latest/download/version.txt";
+    private static final String RELEASES_PAGE_URL =
+            "https://github.com/GeoMatter/Lull/releases/latest";
 
     // Domains that stay inside the app. Everything else opens in the Quest browser.
     private static final String[] INTERNAL_DOMAINS = {
@@ -49,7 +61,47 @@ public class MainActivity extends Activity {
         } else {
             Uri incoming = getIntent() != null ? getIntent().getData() : null;
             webView.loadUrl(incoming != null && isInternal(incoming) ? incoming.toString() : START_URL);
+            checkForUpdate();
         }
+    }
+
+    /** Quietly checks GitHub for a newer build and offers it. Any failure is ignored. */
+    private void checkForUpdate() {
+        new Thread(() -> {
+            HttpURLConnection conn = null;
+            try {
+                conn = (HttpURLConnection) new URL(LATEST_VERSION_URL).openConnection();
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+                conn.setInstanceFollowRedirects(true);
+                if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) return;
+
+                String text;
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                    text = reader.readLine();
+                }
+                if (text == null) return;
+                int latest = Integer.parseInt(text.trim());
+                if (latest > BuildConfig.VERSION_CODE) {
+                    runOnUiThread(this::showUpdateDialog);
+                }
+            } catch (Exception ignored) {
+                // Offline, no release yet, or bad data: skip silently.
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        }).start();
+    }
+
+    private void showUpdateDialog() {
+        if (isFinishing() || isDestroyed()) return;
+        new AlertDialog.Builder(this)
+                .setTitle("Update available")
+                .setMessage("A newer version of Lull is out. Update it through SideQuest, or download it from the release page.")
+                .setPositiveButton("View release", (d, w) -> openExternally(Uri.parse(RELEASES_PAGE_URL)))
+                .setNegativeButton("Later", null)
+                .show();
     }
 
     private void configureWebView() {

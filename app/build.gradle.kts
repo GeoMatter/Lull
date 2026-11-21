@@ -2,6 +2,10 @@ plugins {
     id("com.android.application")
 }
 
+// CI passes the GitHub run number, so every build gets a higher version automatically.
+val ciVersionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
+val keystoreFile: String? = System.getenv("KEYSTORE_FILE")
+
 android {
     namespace = "com.geomatter.lull"
     compileSdk = 35
@@ -10,15 +14,34 @@ android {
         applicationId = "com.geomatter.lull"
         minSdk = 29
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = ciVersionCode
+        versionName = "1.0.$ciVersionCode"
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    signingConfigs {
+        create("release") {
+            if (keystoreFile != null) {
+                storeFile = file(keystoreFile)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signed with the debug key so the release APK can be sideloaded as-is.
-            signingConfig = signingConfigs.getByName("debug")
+            // Permanent key when the secrets are present; throwaway debug key otherwise.
+            signingConfig = if (keystoreFile != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
